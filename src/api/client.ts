@@ -19,7 +19,9 @@ export function setUserId(id: string) {
 }
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY) ?? localStorage.getItem(QUANTUM_CHAT_TOKEN_KEY);
+  // Prefer QuantumAI session token. Do not silently use a QuantumChat token —
+  // mismatched JWT secrets cause opaque 401s on production.
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function setToken(token: string) {
@@ -36,6 +38,12 @@ export function clearSession() {
   localStorage.removeItem(USER_ID_KEY);
 }
 
+/** Notify LoginGate that the JWT is no longer accepted. */
+export function notifyAuthExpired() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('quantum-ai-auth-expired'));
+}
+
 function authHeaders(): HeadersInit {
   const headers: Record<string, string> = {
     'X-User-Id': getUserId(),
@@ -48,11 +56,24 @@ function authHeaders(): HeadersInit {
 }
 
 async function parseJson<T>(res: Response): Promise<T> {
-  const body = await res.json();
-  if (!res.ok) {
-    throw new Error(body.error ?? body.message ?? `Request failed (${res.status})`);
+  const body = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (res.status === 401) {
+    clearSession();
+    notifyAuthExpired();
+    throw new Error(
+      (typeof body.error === 'string' && body.error) ||
+        (typeof body.message === 'string' && body.message) ||
+        'Session expired. Please sign in again.'
+    );
   }
-  return body;
+  if (!res.ok) {
+    throw new Error(
+      (typeof body.error === 'string' && body.error) ||
+        (typeof body.message === 'string' && body.message) ||
+        `Request failed (${res.status})`
+    );
+  }
+  return body as T;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
@@ -161,6 +182,10 @@ export async function streamChat(options: StreamChatOptions) {
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      clearSession();
+      notifyAuthExpired();
+    }
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? `Chat failed (${res.status})`);
   }
@@ -238,6 +263,10 @@ export async function downloadPresentation(
     body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      clearSession();
+      notifyAuthExpired();
+    }
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error ?? 'Presentation generation failed');
   }
@@ -252,7 +281,13 @@ export async function downloadDocumentConversion(id: string, format: 'txt' | 'ma
   const res = await fetch(`${API_BASE}/documents/${id}/download/${format}`, {
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Document conversion failed');
+  if (!res.ok) {
+    if (res.status === 401) {
+      clearSession();
+      notifyAuthExpired();
+    }
+    throw new Error('Document conversion failed');
+  }
   const blob = await res.blob();
   const disposition = res.headers.get('Content-Disposition');
   const filename =

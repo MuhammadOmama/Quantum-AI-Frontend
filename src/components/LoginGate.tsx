@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, createContext, useContext, useState } from 'react';
+import { FormEvent, ReactNode, createContext, useContext, useEffect, useState } from 'react';
 import {
   clearSession,
   getToken,
@@ -33,6 +33,16 @@ export function LoginGate({ children }: { children: ReactNode }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const onExpired = () => {
+      clearSession();
+      setAuthenticated(false);
+      setError('Your session expired. Please sign in again.');
+    };
+    window.addEventListener('quantum-ai-auth-expired', onExpired);
+    return () => window.removeEventListener('quantum-ai-auth-expired', onExpired);
+  }, []);
 
   function logout() {
     clearSession();
