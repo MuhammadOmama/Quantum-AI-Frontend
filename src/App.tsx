@@ -9,18 +9,12 @@ import {
   fetchConversation,
   fetchConversationsPage,
   fetchDocuments,
-  generatePresentationPlan,
-  generateQuiz,
-  summarizeDocument,
-  askDocument,
   truncateFromMessage,
   updateConversation,
 } from './api/conversations';
 import {
   streamChat,
   uploadDocuments,
-  downloadPresentation,
-  downloadDocumentConversion,
   listModels,
 } from './api/client';
 import { useAuthSession } from './components/LoginGate';
@@ -32,9 +26,9 @@ const LOGO_SRC = '/logo.png';
 
 const SUGGESTIONS = [
   'Explain quantum computing in simple terms',
-  'Help me study for a biology exam',
-  'Summarize key points from my uploaded PDF',
-  'Create lesson objectives for photosynthesis',
+  'Write a README.md for my project',
+  'Summarize my uploaded document',
+  'Make a quiz from my notes',
 ];
 
 type SidebarTab = 'chats' | 'documents';
@@ -60,10 +54,6 @@ export default function App() {
   const [renameValue, setRenameValue] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationCursor, setConversationCursor] = useState<string | null>(null);
-  const [educationResult, setEducationResult] = useState<{
-    title: string;
-    items: string[];
-  } | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
   const [webSearch, setWebSearch] = useState(false);
@@ -298,7 +288,7 @@ export default function App() {
       setDocuments(all);
       const newDocs = all.filter((d) => uploadedIds.has(d._id));
       setAttachedDocs((prev) => [...prev, ...newDocs.filter((n) => !prev.some((p) => p._id === n._id))]);
-      setTab('documents');
+      setTab('chats');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed');
     }
@@ -364,79 +354,10 @@ export default function App() {
     await loadConversations(search, chatFilter);
   };
 
-  const handleDocAction = async (
-    doc: DocumentItem,
-    action: 'summarize' | 'ask' | 'solve' | 'ppt' | 'plan' | 'quiz' | 'txt' | 'markdown' | 'attach'
-  ) => {
-    if (action === 'attach') {
-      setAttachedDocs((prev) => (prev.some((d) => d._id === doc._id) ? prev : [...prev, doc]));
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      if (action === 'summarize') {
-        const result = await summarizeDocument(doc._id);
-        await handleSend(`Use this source summary as study material:\n\n${result.summary}`);
-      } else if (action === 'ask') {
-        const question = window.prompt(`Ask a question about ${doc.originalName}`);
-        if (!question?.trim()) return;
-        const result = await askDocument(doc._id, question.trim());
-        setEducationResult({ title: question, items: [result.answer] });
-      } else if (action === 'solve') {
-        const result = await askDocument(
-          doc._id,
-          'Solve or explain the problem shown in this image step by step. Clearly mark any details that are unreadable.'
-        );
-        setEducationResult({ title: `Vision analysis: ${doc.originalName}`, items: [result.answer] });
-      } else if (action === 'quiz') {
-        const result = await generateQuiz(doc._id);
-        setEducationResult({
-          title: result.title,
-          items: result.questions.map(
-            (question, index) =>
-              `${index + 1}. ${question.question}\n${question.options.join(' · ')}\nAnswer: ${
-                question.options[question.answerIndex]
-              }\n${question.explanation}`
-          ),
-        });
-      } else if (action === 'plan') {
-        const result = await generatePresentationPlan(doc._id);
-        setEducationResult({
-          title: result.presentationTitle,
-          items: result.slides.map(
-            (slide, index) => `${index + 1}. ${slide.title}${slide.bullets?.length ? ` — ${slide.bullets.join('; ')}` : ''}`
-          ),
-        });
-      } else if (action === 'txt' || action === 'markdown') {
-        const { blob, filename } = await downloadDocumentConversion(doc._id, action);
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        link.click();
-        URL.revokeObjectURL(url);
-      } else {
-        // Generate presentation text and show in chat with download actions
-        const { blob, filename } = await downloadPresentation(doc._id);
-        const text = await blob.text();
-        const newMessage: ChatMessage = {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: text,
-          downloadable: {
-            text,
-            filename,
-          },
-        };
-        setMessages((prev) => [...prev, newMessage]);
-        setLastPresentationMsg(newMessage);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed');
-    } finally {
-      setLoading(false);
-    }
+  const toggleDocumentInChat = (doc: DocumentItem) => {
+    setAttachedDocs((prev) =>
+      prev.some((d) => d._id === doc._id) ? prev.filter((d) => d._id !== doc._id) : [...prev, doc]
+    );
   };
 
   const lastUserIndex = useMemo(() => {
@@ -621,59 +542,48 @@ export default function App() {
             )
           ) : documents.length === 0 ? (
             <p style={{ color: '#64748b', fontSize: '0.8rem', padding: '0.5rem' }}>
-              Upload PDFs, DOCX, TXT, and more from the chat input
+              Upload files from chat, then ask for a README, summary, quiz, slides, and more
             </p>
           ) : (
-            documents.map((doc) => (
-              <div key={doc._id} className="list-item">
+            documents.map((doc) => {
+              const inChat = attachedDocs.some((d) => d._id === doc._id);
+              return (
+              <div
+                key={doc._id}
+                className={`list-item ${inChat ? 'active' : ''}`}
+                role="button"
+                tabIndex={0}
+                title={inChat ? 'Remove from chat context' : 'Use this document in chat'}
+                onClick={() => toggleDocumentInChat(doc)}
+                onKeyDown={(e) => e.key === 'Enter' && toggleDocumentInChat(doc)}
+              >
                 <span className="list-item-title">📄 {doc.originalName}</span>
                 <span className="list-item-meta">
                   {(doc.wordCount ?? 0).toLocaleString()} words
                   {doc.pageCount ? ` · ${doc.pageCount} pages` : ''}
+                  {inChat ? ' · in chat' : ''}
                   {' · '}
                   <span
                     role="button"
                     tabIndex={0}
-                    onClick={() => handleDeleteDocument(doc._id)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleDeleteDocument(doc._id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteDocument(doc._id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.stopPropagation();
+                        handleDeleteDocument(doc._id);
+                      }
+                    }}
                     style={{ color: '#f87171', cursor: 'pointer' }}
                   >
                     Delete
                   </span>
                 </span>
-                <div className="doc-actions">
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'attach')}>
-                    Use in chat
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'summarize')}>
-                    Summarize
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'ask')}>
-                    Ask
-                  </button>
-                  {doc.mimeType?.startsWith('image/') && (
-                    <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'solve')}>
-                      Solve image
-                    </button>
-                  )}
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'ppt')}>
-                    PPT
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'plan')}>
-                    Plan
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'quiz')}>
-                    Quiz
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'txt')}>
-                    TXT
-                  </button>
-                  <button type="button" className="btn btn-ghost" onClick={() => handleDocAction(doc, 'markdown')}>
-                    Markdown
-                  </button>
-                </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -728,8 +638,8 @@ export default function App() {
               <img src="/logo.png" alt="Quantum AI" className="brand-logo-lg" />
               <h3>How can I help you today?</h3>
               <p>
-                Chat with Quantum AI, upload documents for analysis, or generate student-friendly
-                PowerPoint presentations from PDFs.
+                Upload a document, then ask in plain language — Quantum AI picks the right format
+                (Markdown for a README, quiz, summary, slides, and more).
               </p>
               <div className="suggestion-grid">
                 {SUGGESTIONS.map((s) => (
@@ -772,18 +682,6 @@ export default function App() {
             ))
           )}
         </div>
-
-        {educationResult && (
-          <section className="education-result" aria-label="Generated education material">
-            <header>
-              <h3>{educationResult.title}</h3>
-              <button type="button" onClick={() => setEducationResult(null)} aria-label="Close">×</button>
-            </header>
-            <ol>
-              {educationResult.items.map((item, index) => <li key={`${index}-${item.slice(0, 20)}`}>{item}</li>)}
-            </ol>
-          </section>
-        )}
 
         <ChatInput
           value={input}
