@@ -310,15 +310,51 @@ export default function App() {
     }
   };
 
-  const handleDownloadPresentation = (message: ChatMessage) => {
-    if (!message.downloadable) return;
-    const blob = new Blob([message.downloadable.text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = message.downloadable.filename;
-    link.click();
-    URL.revokeObjectURL(url);
+  const handleDownloadPresentation = async (message: ChatMessage, format?: string) => {
+    if (!message.content) return;
+
+    const text = message.content;
+    const sdkFormat =
+      format === 'word' ? 'docx'
+        : format === 'markdown' ? 'md'
+        : format === 'text' ? 'txt'
+        : 'pdf';
+
+    const inputFile = new File([text], 'answer.txt', { type: 'text/plain' });
+
+    try {
+      const { convert } = await import('https://formatconvert.quantumlogicslimited.com/sdk.js');
+      const { blob, filename } = await convert(inputFile, sdkFormat, {
+        from: 'txt',
+        onProgress: ({
+          page,
+          total,
+          stage,
+        }: {
+          page?: number;
+          total?: number;
+          stage?: string;
+        }) => {
+          console.log('convert progress', page, total, stage);
+        },
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || `answer.${sdkFormat === 'md' ? 'md' : sdkFormat === 'docx' ? 'docx' : sdkFormat}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('FormatConvert failed', err);
+      const fallbackBlob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const fallbackUrl = URL.createObjectURL(fallbackBlob);
+      const a = document.createElement('a');
+      a.href = fallbackUrl;
+      a.download = 'answer.txt';
+      a.click();
+      URL.revokeObjectURL(fallbackUrl);
+    }
   };
 
   const handleRequestPresentationChanges = (message: ChatMessage) => {
@@ -402,7 +438,6 @@ export default function App() {
             ×
           </button>
         </div>
-
         <div className="sidebar-actions">
           <button type="button" className="btn btn-primary" onClick={startNewChat}>
             + New chat
@@ -675,7 +710,7 @@ export default function App() {
                       ? () => handleEditPrompt(m)
                       : undefined
                   }
-                  onDownload={m.downloadable ? handleDownloadPresentation : undefined}
+                  onDownload={m.role === 'assistant' ? handleDownloadPresentation : undefined}
                   onRequestChanges={m.downloadable ? handleRequestPresentationChanges : undefined}
                 />
               </div>
