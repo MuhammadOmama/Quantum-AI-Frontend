@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeSanitize from 'rehype-sanitize';
@@ -13,8 +13,8 @@ interface Props {
   onCopy?: () => void;
   onRegenerate?: () => void;
   onRetry?: () => void;
-  onEdit?: () => void;
-  onDownload?: (message: ChatMessage) => void;
+  onEdit?: (message: ChatMessage) => void;
+  onDownload?: (message: ChatMessage, format?: string) => void;
   onRequestChanges?: (message: ChatMessage) => void;
 }
 
@@ -83,6 +83,18 @@ export function MessageBubble({
 }: Props) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (!menuRef.current) return;
+      if (!(e.target instanceof Node)) return;
+      if (!menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('click', onDocClick);
+    return () => document.removeEventListener('click', onDocClick);
+  }, []);
 
   const handleCopy = async () => {
     try {
@@ -93,6 +105,36 @@ export function MessageBubble({
     } catch {
       // ignore
     }
+  };
+
+  const fallbackClientDownload = (format?: string) => {
+    const text = message.content ?? '';
+    const ext =
+      format === 'markdown' ? 'md' :
+      format === 'word' ? 'docx' :
+      format === 'pdf' ? 'pdf' :
+      'txt';
+    const mime =
+      format === 'markdown' ? 'text/markdown' :
+      format === 'text' ? 'text/plain' :
+      'application/octet-stream';
+    const filename = `answer.${ext}`;
+    const blob = new Blob([text], { type: `${mime};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadClick = (format?: string) => {
+    if (onDownload) {
+      onDownload(message, format);
+    } else {
+      fallbackClientDownload(format);
+    }
+    setMenuOpen(false);
   };
 
   return (
@@ -151,7 +193,7 @@ export function MessageBubble({
               {copied ? 'Copied' : 'Copy'}
             </button>
             {isUser && isLastUser && onEdit && (
-              <button type="button" onClick={onEdit} title="Edit prompt">
+              <button type="button" onClick={() => onEdit?.(message)} title="Edit prompt">
                 Edit
               </button>
             )}
@@ -165,8 +207,40 @@ export function MessageBubble({
                 Retry
               </button>
             )}
+
+            <div className="more-container" ref={menuRef}>
+              <button
+                className="more-btn"
+                aria-haspopup="true"
+                aria-expanded={menuOpen}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen((s) => !s);
+                }}
+                title="More"
+              >
+                ⋯
+              </button>
+              {menuOpen && (
+                <div className="more-menu" role="menu">
+                  <button type="button" onClick={() => handleDownloadClick('pdf')}>
+                    📥 PDF
+                  </button>
+                  <button type="button" onClick={() => handleDownloadClick('word')}>
+                    📥 Word
+                  </button>
+                  <button type="button" onClick={() => handleDownloadClick('text')}>
+                    📥 Text
+                  </button>
+                  <button type="button" onClick={() => handleDownloadClick('markdown')}>
+                    📥 Markdown
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
+
         {message.downloadable && (
           <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
             <button
