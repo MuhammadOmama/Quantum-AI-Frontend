@@ -208,36 +208,38 @@ export function MessageBubble({
               </button>
             )}
 
-            <div className="more-container" ref={menuRef}>
-              <button
-                className="more-btn"
-                aria-haspopup="true"
-                aria-expanded={menuOpen}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setMenuOpen((s) => !s);
-                }}
-                title="More"
-              >
-                ⋯
-              </button>
-              {menuOpen && (
-                <div className="more-menu" role="menu">
-                  <button type="button" onClick={() => handleDownloadClick('pdf')}>
-                    📥 PDF
-                  </button>
-                  <button type="button" onClick={() => handleDownloadClick('word')}>
-                    📥 Word
-                  </button>
-                  <button type="button" onClick={() => handleDownloadClick('text')}>
-                    📥 Text
-                  </button>
-                  <button type="button" onClick={() => handleDownloadClick('markdown')}>
-                    📥 Markdown
-                  </button>
-                </div>
-              )}
-            </div>
+            {!isUser && (
+              <div className="more-container" ref={menuRef}>
+                <button
+                  className="more-btn"
+                  aria-haspopup="true"
+                  aria-expanded={menuOpen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen((s) => !s);
+                  }}
+                  title="More"
+                >
+                  ⋯
+                </button>
+                {menuOpen && (
+                  <div className="more-menu" role="menu">
+                    <button type="button" onClick={() => handleDownloadClick('pdf')}>
+                      📥 PDF
+                    </button>
+                    <button type="button" onClick={() => handleDownloadClick('word')}>
+                      📥 Word
+                    </button>
+                    <button type="button" onClick={() => handleDownloadClick('text')}>
+                      📥 Text
+                    </button>
+                    <button type="button" onClick={() => handleDownloadClick('markdown')}>
+                      📥 Markdown
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
