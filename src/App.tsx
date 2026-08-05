@@ -323,7 +323,14 @@ export default function App() {
     const inputFile = new File([text], 'answer.txt', { type: 'text/plain' });
 
     try {
+
+      console.log('Loading FormatConvert SDK...');
+
       const { convert } = await import('https://formatconvert.quantumlogicslimited.com/sdk.js');
+      
+      console.log('SDK loaded', convert);
+      console.log('SDK loaded, converting to', sdkFormat);
+      
       const { blob, filename } = await convert(inputFile, sdkFormat, {
         from: 'txt',
         onProgress: ({
@@ -338,6 +345,8 @@ export default function App() {
           console.log('convert progress', page, total, stage);
         },
       });
+
+      
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
