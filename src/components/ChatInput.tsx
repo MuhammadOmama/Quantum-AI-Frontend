@@ -16,14 +16,26 @@ interface Props {
   onWebSearchChange?: (enabled: boolean) => void;
 }
 
+type SpeechRecognitionResultLike = {
+  isFinal: boolean;
+  0: { transcript: string; confidence?: number };
+};
+
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike> & { length: number };
+};
+
 type SpeechRecognitionLike = {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
+  maxAlternatives: number;
   start: () => void;
   stop: () => void;
-  onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null;
-  onerror: (() => void) | null;
+  abort: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   onend: (() => void) | null;
 };
 
@@ -33,6 +45,16 @@ function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
     webkitSpeechRecognition?: new () => SpeechRecognitionLike;
   };
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
+function resolveSpeechLang(): string {
+  const nav = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+  return nav.trim() || 'en-US';
+}
+
+function joinTranscript(base: string, finalPart: string, interimPart: string): string {
+  const chunks = [base.trimEnd(), finalPart.trim(), interimPart.trim()].filter(Boolean);
+  return chunks.join(' ');
 }
 
 export function ChatInput({
@@ -51,13 +73,26 @@ export function ChatInput({
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const valueRef = useRef(value);
+  const baseTextRef = useRef('');
+  const finalTranscriptRef = useRef('');
+  const wantListeningRef = useRef(false);
   const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [voiceSupported] = useState(() => Boolean(getSpeechRecognition()));
 
+  valueRef.current = value;
+
   useEffect(() => {
     return () => {
-      recognitionRef.current?.stop();
+      wantListeningRef.current = false;
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
     };
   }, []);
 
@@ -77,40 +112,119 @@ export function ChatInput({
     }
   };
 
-  const toggleVoice = () => {
-    const Ctor = getSpeechRecognition();
-    if (!Ctor) return;
+  const stopVoice = () => {
+    wantListeningRef.current = false;
+    setListening(false);
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (!recognition) return;
+    try {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      recognition.stop();
+    } catch {
+      try {
+        recognition.abort();
+      } catch {
+        // ignore
+      }
+    }
+  };
 
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
+  const startVoice = () => {
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) {
+      setVoiceError('Voice typing is not supported in this browser. Try Chrome or Edge.');
       return;
     }
+
+    setVoiceError(null);
+    stopVoice();
+
+    baseTextRef.current = valueRef.current;
+    finalTranscriptRef.current = '';
+    wantListeningRef.current = true;
 
     const recognition = new Ctor();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+    recognition.lang = resolveSpeechLang();
+
     recognition.onresult = (event) => {
       let interim = '';
-      let finalText = '';
-      for (let i = 0; i < event.results.length; i += 1) {
+      let newlyFinal = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
         const result = event.results[i];
-        if (result.isFinal) finalText += result[0].transcript;
-        else interim += result[0].transcript;
+        const piece = result?.[0]?.transcript ?? '';
+        if (!piece) continue;
+        if (result.isFinal) newlyFinal += piece;
+        else interim += piece;
       }
-      if (finalText) {
-        onChange(`${value}${value && !value.endsWith(' ') ? ' ' : ''}${finalText}`.trimStart());
-      } else if (interim) {
-        const base = value.replace(/\s*\[listening…\]$/, '');
-        onChange(`${base}${base && !base.endsWith(' ') ? ' ' : ''}${interim}`);
+
+      if (newlyFinal) {
+        const prev = finalTranscriptRef.current;
+        const needsSpace =
+          prev.length > 0 && !/\s$/.test(prev) && !/^\s/.test(newlyFinal);
+        finalTranscriptRef.current = `${prev}${needsSpace ? ' ' : ''}${newlyFinal}`;
       }
+
+      onChange(
+        joinTranscript(baseTextRef.current, finalTranscriptRef.current, interim),
+      );
     };
-    recognition.onerror = () => setListening(false);
-    recognition.onend = () => setListening(false);
+
+    recognition.onerror = (event) => {
+      const code = event?.error || '';
+      // Benign / recoverable — keep listening when possible.
+      if (code === 'no-speech' || code === 'aborted') return;
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        wantListeningRef.current = false;
+        setListening(false);
+        setVoiceError('Microphone permission is blocked. Allow mic access and try again.');
+        return;
+      }
+      if (code === 'network') {
+        setVoiceError('Voice service network error. Check your connection and try again.');
+      }
+      wantListeningRef.current = false;
+      setListening(false);
+    };
+
+    recognition.onend = () => {
+      // Chrome often ends continuous sessions after a pause — restart while mic should stay on.
+      if (wantListeningRef.current) {
+        try {
+          recognition.start();
+          return;
+        } catch {
+          // Fall through and clear UI if restart fails.
+        }
+      }
+      setListening(false);
+      recognitionRef.current = null;
+    };
+
     recognitionRef.current = recognition;
-    recognition.start();
-    setListening(true);
+    try {
+      recognition.start();
+      setListening(true);
+    } catch {
+      wantListeningRef.current = false;
+      setListening(false);
+      setVoiceError('Could not start voice typing. Click the mic and try again.');
+    }
+  };
+
+  const toggleVoice = () => {
+    if (listening || wantListeningRef.current) {
+      onChange(joinTranscript(baseTextRef.current, finalTranscriptRef.current, ''));
+      stopVoice();
+      return;
+    }
+    startVoice();
   };
 
   return (
@@ -128,19 +242,32 @@ export function ChatInput({
         </div>
       )}
 
+      {voiceError && (
+        <p className="voice-error" role="status">
+          {voiceError}
+        </p>
+      )}
+
       <div className="input-box">
         <textarea
           ref={textareaRef}
           rows={1}
           placeholder={
             listening
-              ? 'Listening… speak now'
+              ? 'Listening… speak clearly'
               : webSearch
                 ? 'Ask with live Google, YouTube & Reddit search…'
                 : 'Ask Quantum AI anything…'
           }
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => {
+            // If user edits while listening, treat that as the new base and drop session finals.
+            if (wantListeningRef.current) {
+              baseTextRef.current = e.target.value;
+              finalTranscriptRef.current = '';
+            }
+            onChange(e.target.value);
+          }}
           onKeyDown={handleKeyDown}
           disabled={disabled && !loading}
           aria-label="Prompt"
@@ -184,6 +311,8 @@ export function ChatInput({
               className={`icon-btn ${listening ? 'listening' : ''}`}
               onClick={toggleVoice}
               title={listening ? 'Stop voice typing' : 'Voice typing'}
+              aria-pressed={listening}
+              aria-label={listening ? 'Stop voice typing' : 'Start voice typing'}
               disabled={loading}
             >
               {listening ? '⏹' : '🎤'}

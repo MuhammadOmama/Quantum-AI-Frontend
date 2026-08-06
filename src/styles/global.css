@@ -1198,6 +1198,17 @@ button {
   animation: pulse 1.2s ease infinite;
 }
 
+.voice-error {
+  margin: 0 0 0.55rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--danger-text, #b91c1c);
+  background: var(--danger-bg, #fef2f2);
+  border: 1px solid var(--danger-border, #fecaca);
+}
+
 .message-with-search {
   display: flex;
   flex-direction: column;
