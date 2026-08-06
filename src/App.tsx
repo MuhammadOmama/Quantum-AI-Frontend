@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MessageBubble } from './components/MessageBubble';
 import { ChatInput } from './components/ChatInput';
 import { SearchResultsCard } from './components/SearchResultsCard';
-import { ThemeSwitcher } from './components/ThemeSwitcher';
+import { ThemeMenu } from './components/ThemeMenu';
 import {
   deleteConversation,
   deleteDocument,
@@ -633,7 +633,6 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer">
-          <ThemeSwitcher />
           <p className="sidebar-status">
             {online ? '● API connected' : '○ API offline — start backend on port 5001'}
           </p>
@@ -675,7 +674,7 @@ export default function App() {
             </div>
           </div>
           <div className="chat-header-actions">
-            <ThemeSwitcher compact />
+            <ThemeMenu tone="header" />
           </div>
         </header>
 

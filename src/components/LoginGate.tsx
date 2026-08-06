@@ -7,7 +7,7 @@ import {
   setToken,
   setUserId,
 } from '../api/client';
-import { ThemeSwitcher } from './ThemeSwitcher';
+import { ThemeMenu } from './ThemeMenu';
 
 type AuthMode = 'signin' | 'signup';
 
@@ -100,7 +100,7 @@ export function LoginGate({ children }: { children: ReactNode }) {
   return (
     <main className="ai-login-page">
       <div className="ai-login-theme-bar">
-        <ThemeSwitcher compact />
+        <ThemeMenu tone="login" />
       </div>
       <section className="ai-login-copy">
         <img src="/logo.png" alt="" className="ai-login-logo" />

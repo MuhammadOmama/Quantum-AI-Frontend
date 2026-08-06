@@ -1,12 +1,21 @@
 import type { CSSProperties } from 'react';
 import { useTheme } from '../context/ThemeContext';
+import type { ThemeId } from '../themes';
 
-export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
+type ThemeSwitcherProps = {
+  variant?: 'dialog' | 'inline';
+  onSelect?: (id: ThemeId) => void;
+};
+
+export function ThemeSwitcher({ variant = 'inline', onSelect }: ThemeSwitcherProps) {
   const { theme, setTheme, themes } = useTheme();
 
   return (
-    <div className={`theme-switcher${compact ? ' is-compact' : ''}`} role="group" aria-label="Appearance">
-      {!compact ? <span className="theme-switcher-label">Theme</span> : null}
+    <div
+      className={`theme-switcher theme-switcher--${variant}`}
+      role="group"
+      aria-label="Appearance themes"
+    >
       <div className="theme-swatch-row">
         {themes.map((item) => {
           const active = theme === item.id;
@@ -18,7 +27,10 @@ export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
               aria-pressed={active}
               aria-label={`${item.label} theme`}
               title={`${item.label} — ${item.description}`}
-              onClick={() => setTheme(item.id)}
+              onClick={() => {
+                setTheme(item.id);
+                onSelect?.(item.id);
+              }}
               style={
                 {
                   '--swatch-a': item.swatch[0],
@@ -28,7 +40,10 @@ export function ThemeSwitcher({ compact = false }: { compact?: boolean }) {
               }
             >
               <span className="theme-swatch-orb" aria-hidden="true" />
-              {!compact ? <span className="theme-swatch-name">{item.label}</span> : null}
+              <span className="theme-swatch-name">{item.label}</span>
+              {variant === 'dialog' ? (
+                <span className="theme-swatch-desc">{item.description}</span>
+              ) : null}
             </button>
           );
         })}
