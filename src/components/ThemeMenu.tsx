@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ThemeSwitcher } from './ThemeSwitcher';
 
 type ThemeMenuProps = {
@@ -52,6 +53,44 @@ export function ThemeMenu({ tone = 'header' }: ThemeMenuProps) {
     };
   }, [dialogOpen]);
 
+  const dialog =
+    dialogOpen && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            className="theme-dialog-backdrop"
+            role="presentation"
+            onClick={() => setDialogOpen(false)}
+          >
+            <div
+              className="theme-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="theme-dialog-header">
+                <div>
+                  <h2 id={titleId}>Choose a theme</h2>
+                  <p>Pick an appearance for QuantumAI. Your choice is saved on this device.</p>
+                </div>
+                <button
+                  type="button"
+                  className="theme-dialog-close"
+                  aria-label="Close themes"
+                  onClick={() => setDialogOpen(false)}
+                >
+                  ×
+                </button>
+              </header>
+              <div className="theme-dialog-body">
+                <ThemeSwitcher variant="dialog" onSelect={() => setDialogOpen(false)} />
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <>
       <div className={`theme-menu theme-menu--${tone}`} ref={rootRef}>
@@ -82,39 +121,7 @@ export function ThemeMenu({ tone = 'header' }: ThemeMenuProps) {
         ) : null}
       </div>
 
-      {dialogOpen ? (
-        <div
-          className="theme-dialog-backdrop"
-          role="presentation"
-          onClick={() => setDialogOpen(false)}
-        >
-          <div
-            className="theme-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="theme-dialog-header">
-              <div>
-                <h2 id={titleId}>Choose a theme</h2>
-                <p>Pick an appearance for QuantumAI. Your choice is saved on this device.</p>
-              </div>
-              <button
-                type="button"
-                className="theme-dialog-close"
-                aria-label="Close themes"
-                onClick={() => setDialogOpen(false)}
-              >
-                ×
-              </button>
-            </header>
-            <div className="theme-dialog-body">
-              <ThemeSwitcher variant="dialog" onSelect={() => setDialogOpen(false)} />
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {dialog}
     </>
   );
 }
