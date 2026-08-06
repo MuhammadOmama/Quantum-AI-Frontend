@@ -49,6 +49,7 @@ export function ChatInput({
   onWebSearchChange,
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [listening, setListening] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -59,6 +60,15 @@ export function ChatInput({
       recognitionRef.current?.stop();
     };
   }, []);
+
+  // Grow the prompt with wrapped / multi-line text so earlier lines stay visible.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const next = Math.min(el.scrollHeight, 160);
+    el.style.height = `${Math.max(next, 24)}px`;
+  }, [value]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -120,6 +130,7 @@ export function ChatInput({
 
       <div className="input-box">
         <textarea
+          ref={textareaRef}
           rows={1}
           placeholder={
             listening
@@ -132,6 +143,7 @@ export function ChatInput({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled && !loading}
+          aria-label="Prompt"
         />
         <div className="input-actions">
           <button

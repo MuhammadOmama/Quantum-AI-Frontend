@@ -618,6 +618,9 @@ button {
   outline: none;
   min-height: 24px;
   max-height: 160px;
+  overflow-y: auto;
+  line-height: 1.45;
+  field-sizing: content;
   background: transparent;
 }
 
