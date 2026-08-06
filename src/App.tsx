@@ -320,47 +320,51 @@ export default function App() {
         : format === 'text' ? 'txt'
         : 'pdf';
 
-    const inputFile = new File([text], 'answer.txt', { type: 'text/plain' });
+    const sourceFormat = format === 'text' ? 'txt' : 'md';
+    const fileName = sourceFormat === 'md' ? 'answer.md' : 'answer.txt';
+    const mimeType = sourceFormat === 'md' ? 'text/markdown;charset=utf-8' : 'text/plain;charset=utf-8';
+
+    const inputFile = new File([text], fileName, { type: mimeType });
 
     try {
-
       console.log('Loading FormatConvert SDK...');
-
       const { convert } = await import('https://formatconvert.quantumlogicslimited.com/sdk.js');
-      
-      console.log('SDK loaded', convert);
-      console.log('SDK loaded, converting to', sdkFormat);
-      
-      const { blob, filename } = await convert(inputFile, sdkFormat, {
-        from: 'txt',
-        onProgress: ({
-          page,
-          total,
-          stage,
-        }: {
-          page?: number;
-          total?: number;
-          stage?: string;
-        }) => {
+
+      const { blob } = await convert(inputFile, sdkFormat, {
+        from: sourceFormat,
+        onProgress: ({ page, total, stage }) => {
           console.log('convert progress', page, total, stage);
         },
       });
 
-      
+    const ext =
+      format === 'word' ? 'docx'
+        : format === 'markdown' ? 'md'
+        : format === 'text' ? 'txt'
+        : 'pdf';
 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename || `answer.${sdkFormat === 'md' ? 'md' : sdkFormat === 'docx' ? 'docx' : sdkFormat}`;
-      a.click();
-      URL.revokeObjectURL(url);
+    const downloadName = `answer.${ext}`;
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = downloadName;
+    a.click();
+    URL.revokeObjectURL(url);
     } catch (err) {
       console.error('FormatConvert failed', err);
+
+      const fallbackName =
+        format === 'word' ? 'answer.docx'
+          : format === 'markdown' ? 'answer.md'
+          : format === 'text' ? 'answer.txt'
+          : 'answer.pdf';
+
       const fallbackBlob = new Blob([text], { type: 'text/plain;charset=utf-8' });
       const fallbackUrl = URL.createObjectURL(fallbackBlob);
       const a = document.createElement('a');
       a.href = fallbackUrl;
-      a.download = 'answer.txt';
+      a.download = fallbackName;
       a.click();
       URL.revokeObjectURL(fallbackUrl);
     }
