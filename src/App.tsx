@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MessageBubble } from './components/MessageBubble';
 import { ChatInput } from './components/ChatInput';
 import { SearchResultsCard } from './components/SearchResultsCard';
+import { ThemeMenu } from './components/ThemeMenu';
 import {
   deleteConversation,
   deleteDocument,
@@ -675,6 +676,9 @@ export default function App() {
                 {loading && ' · generating…'}
               </p>
             </div>
+          </div>
+          <div className="chat-header-actions">
+            <ThemeMenu tone="header" />
           </div>
         </header>
 
